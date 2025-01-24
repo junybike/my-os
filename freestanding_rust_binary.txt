@@ -1,0 +1,38 @@
+[Build commands]
+cargo rustc -- -C link-args="/ENTRY:_start /SUBSYSTEM:console"
+cargo build --target thumbv7em-none-eabihf
+
+<Freestanding rust library>
+
+To write an OS kernel, code must not depend on any operating system features
+Not available: threads, files, heap memory, network, random numbers, std output
+Available: iterators, closures, pattern matching, option/result, string formatting, ownership system.
+
+Need an executable that can be run without underlying operating system
+The executable is a "free standing" or "Bare-metal"
+
+Rust crates link stdlib by default. It depends on the OS and C stdlib
+
+'panic_handler': compiler should invoke when a panic occurs.
+ - in no_std env, we need to define it ourselves
+
+PanicInfo: contains the file and line where the panic happened and optional panic messages
+ - never returns
+
+Language items: special functions and types that are required internally by compiler
+ - highly unstable implementation details and not type checked 
+'eh_personality': language item marking a function that is used for implementing stack unwinding
+ - To run destructors of all live stack. Ensures all used memory is freed and allows parent thread to catch the panic and conitnue execution
+ - requires OS specific libraries
+
+Rust execution: 
+1. take care of setting up stack overflow guards or printing backtrace on panic
+2. then calls main functions
+
+Rust binary linking stdlib:
+1. starts in a C runtime library 'crt0' (sets up env for C application)
+ - create stack and place args in right registers
+2. crt0 invokes entry point of Rust runtime (marked by start language item)
+
+Freestanding executable (no access to Rust runtime and crt0)
+must define our own entry point by overwriting crt0 entry point
