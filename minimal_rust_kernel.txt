@@ -1,0 +1,25 @@
+Boot process: 
+1. computer on
+2. execute firmware code in mb ROM
+3. code performs power-on self test, detect RAM, pre-init CPU and HW
+4. looks for bootable disk and start botting operating system kernel
+
+Two firmware standards for x86: Basic Input/Output System (BIOS), Unified Extensible Firmware Interface (UEFI)
+
+Multiboot: to avoid every OS implements its own bootloader
+Example: GNU GRUB
+ - disadvantage: only support 32 bit protected mode
+
+Target specification: describes CPU architecture, vendor, OS, ABI
+ - can define target through JSON file
+
+SIMD: often speed up program, but using large SIMD registers in OS kernel leads to performance problems
+ - kernel needs to restore all registers to their original state before continuing an interrupted program.
+ - must save complete SIMD state to main memory each system call or HW interrupt.
+Disable if SIMD state is large and interrupts can occur often.
+
+'build-std': allows to recompile 'core' and other std lib crates on demand.
+
+compiler_builtins: contains implementation of memset, memcpy, memcmp
+
+VGA text buffer: memory area mapped to VGA HW that contains the contents displayed on screen
