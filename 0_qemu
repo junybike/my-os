@@ -1,0 +1,2 @@
+cd /mnt/c/Users/Jsn/Desktop/cmpt303/my-os/my_os
+qemu-system-x86_64 -drive format=raw,file=target/x86_64-my_os/debug/bootimage-my_os.bin
