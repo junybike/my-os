@@ -7,28 +7,14 @@
 use core::panic::PanicInfo;
 use my_os::println;
 
-// Overwr]iting operating system entry point
-
-#[no_mangle]
-pub extern "C" fn _start() -> !
+#[no_mangle] // don't mangle the name of this function
+pub extern "C" fn _start() -> ! 
 {
-    println!("HEllo World{}", "!");
-    println!("?????/////");
-    
-    #[cfg(test)]
     test_main();
+
     loop {}
 }
 
-#[cfg(not(test))]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! 
-{
-    println!("{}", info);
-    loop {}
-}
-
-#[cfg(test)]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! 
 {

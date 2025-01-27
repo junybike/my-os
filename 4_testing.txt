@@ -1,0 +1,35 @@
+custom_test_framworks: for no external libraries and #[no_std] env
+ - collects all functions annotated with a #[test_case]
+ - invokes a user-sepcified runner function with list of tests as argument
+
+After executing tests, 'test_runner' returns to 'test_main' function
+- returns to _start entry function.
+
+To communicate between CPU and peripheral HW on x86
+- memory mapped I/O: memory address is mapped to some memory on VGA device
+- port mapped I/O: each peripheral has one or more port numbers and communicate with cpu instruction in and output 
+    (takes a port number and a data type)
+
+isa_debug_exit uses port-mapped I/O
+when a value is written to I/O port specified by iobase, causes QEMU to exit with exit status (value << 1) | 1
+- value 0 -> 1, 1 -> 3
+
+Serial Port: way to send data. QEMU can redirect bytes sent over serial to host's standard output or a file
+UART: the chips implementing a serial interface
+- uses multiple I/O ports for programming different device registers
+
+cargo test waits until the test runner exits.
+- test that never returns can block the test runner
+- bootimage has a timeout. exceeding timeout considers it as Timed Out
+
+Integration test and VGA buffer tests.
+When _start functions of main.rs and lib.rs grow, they call various initalization routines before runing test_main function.
+- two tests will be executed in different environments
+
+Integration tests: treated as separate executable.
+- gives control over the environments
+- can test that the code interacts with CPU or HW device correctly
+
+CPU exception: code performs invalid operations (divide by 0)
+Page tables: defines which memory regions are valid and accessible
+Userspace program: limited access to system's resource
