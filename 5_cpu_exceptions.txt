@@ -1,0 +1,98 @@
+CPU exception: accessing invalid memory, divide by zero
+- signals that something is wrong with current instruction
+- If occurs, CPU interrupts its current work and calls specific exception handler function
+To handle/react, set up interrupt descriptor table that provides handler functions
+
+Types:
+- Page fault: illegal memory access (reading unmapped page, tries to write read only page)
+- Invalid opcode: current instruction is invalid (trying instructions that CPU doesnt support)
+- General protection fault: occurs on various kinds of access violation (executing privileged instruction in user mode)
+- Double fault: An exception occurs while calling the exception handler for previous exception / Or no handler function registered for an exception.
+- Triple fault: An exception occurs while CPU tries to call double fault handler function
+ (cannot catch or handle triple fault. processor handles by rebooting the os)
+
+Each exception has a predefined IDT index.
+HW can automatically load the corresponding IDT entry for each exception
+
+CPU handling exception:
+1. push some register on stack including instruction pointer and RFLAGS register
+2. read corresponding entry from Interrupt Descriptor Table (IDT) (If page fault, reads 14th entry)
+3. check if entry is present. If not, double fault
+4. disable hw interrupts if entry is interrupt gate
+5. load specified GDT selector into the code segment (CS)
+6. jump to specified handler function
+
+idt::Entry<F>: struct representing fields of an IDT entry (F: expected handler function type)
+
+fucntion call: invoked voluntarily by compiler inserted 'call' instruction
+Exception: may occur at any instruction
+
+Calling conventions: specifies details of function call
+- location of function parameters (registers? stack?)
+- specifies how results are returned
+
+Preserved and scratch registers
+Value of preserved registers must remain unchanged across function calls
+- called function (callee) is only allowed to overwrite these registers if it restores their original values before returning
+- calle-saved
+- r14, r15
+
+Called function is allowed to overwrite scratch registers without restrictions
+- if caller wants to preserve value of scratch register across function call, must backup and restore it before function call (push to stack)
+- caller saved
+- rax, rcx
+
+Compiler does not know if an instruction causes a stack overflow / page fault
+
+Since we don't know when exception occurs, cannot backup registers before.
+- cant use calling convention that relies on caller saved registers for exception handlers
+- use convention that preserves all registers. 
+- x86-interrupt calling convention: gurantees all register values are resotred to their original values on function return
+
+Doesnt mean that all registers are saved to the stack at function entry
+Compiler only backs up registers that are overwritten by function.
+- very efficient code can be generated for short functions that only use a few registers
+
+On normal function call: CPU pushes return address before jumping to target function.
+- function return, CPU pops the return address and jumps to it
+
+Exception/interrupt handlers: pushing return address is not suffice
+- interrupt handlers run in different context (Stack pointer, CPU flags)
+Performs:
+0. save old stack pointer
+- cpu reads stack pointer and stack segment register values and remember them in internal buffer
+1. aligning stack pointer
+- stack pointer must be aligned on 16-byte boundary, so CPU performs such an alignment right after interrupt
+2. switching stacks
+- switch occurs when CPU privilege level changes (CPU exception in usermode program)
+3. pushing old stack pointer
+- CPU pushes stack pointer and stack segment registers value from step 0 to stack to restore original stack pointer when returning from interrupt handler
+4. pushing and updating RFLAGS register
+- RFLAGS contains various control and status bits. On interrupt entry, CPU changes some bits and pushes the old value
+5. pushing instruction pointer
+- before jumping to interrupt handler function, CPU pushes instruction pointer and code segment.
+- comparable to pushing return address of normal function call 
+6. pushing an error code
+- for some exception, CPU pushes error code which describes cause of exception
+7. invoking interrupt handler
+- CPU reads address and segment descriptor of interrupt handler function from corresponding field in IDT.
+- Then invokes the handler by loading values into instruction pointer and code segment
+
+x86-interrupt calling convention
+- retrieving the arguments: it is aware that arguments already lie on stack at a specific offset
+    For handling exception, must not overwrite any register values before backing them up on the stack
+    arguments cannot be passed in registers
+- returning using iretq: special instruction for returning interrupt stack frame
+- handling error code: changes stack alignment and it needs to be popped off the stack before returning
+    x86-interrupt convention doesnt know which handler function is used for which exception
+    InterruptDescriptorTable: ensures that correct function types are used
+- aligning the stack: for some exception, when it pushes an error code, it destroys the stack alignment
+    the calling convention takes care of this by realigning the stack in this case
+
+breakpoint exception: exception to test exception handling.
+- temporarily pause a program when breakpoint instruction int3 is executed
+- used in debuggers (breakpoint)
+
+load method: expects &'statc self (valid reference for the complete runtime of program)
+CPU accesses table on every interrupt until we load a different IDT.
+Using shorter lifetime than 'static could lead to use after free bugs

@@ -15,8 +15,13 @@ pub extern "C" fn _start() -> !
     println!("HEllo World{}", "!");
     println!("?????/////");
     
+    my_os::init();
+    x86_64::instructions::interrupts::int3();
+
     #[cfg(test)]
     test_main();
+    
+    println!("running...");
     loop {}
 }
 
