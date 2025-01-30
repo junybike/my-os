@@ -1,0 +1,56 @@
+Double fault: to prevent triple faults
+- special exception when cpu fails to invoke an exception handler
+
+Double fault in QEMU: writing to an invalid memory
+Without double fault handler
+1. cpu tries to write on invalid memory -> page fault
+2. cpu look at IDT but no handler function for page fault. -> double fault
+3. cpu look at double fault in IDT but no handler function -> triple fault
+4. QEMU does a system reset
+With double fault handler
+1. cpu tries to write on invalid memory -> page fault
+2. no page fault handler -> but double fault handler exists
+3. cpu jumps to double fault handler
+
+Fails to invoke:
+Double fault exception can occur when a second exception occurs during handling of prior exception handler
+example: 
+- divide by zero fault followed by page fault -> page fault handler invoked
+- divide by zero fault follwed by general protection fault -> double fault
+
+If breakpoint exception occurs and corresponding handler function is swapped out, page fault and its handler is invoked
+If page fault occurs and page fault is swapped out, double fault and its handler is invoked
+If divide by zero handler causes breakpoint exception, cpu tries to invoke breakpoint handler.
+    if breakpoint handler is swapped out, page fault and its handler is invoked
+
+When exception occurs, cpu tries to read the corresponding IDT entry.
+Since entry is 0, (not a valid IDT entry) a general protection fault occurs.
+No general protection fault handler, so another general protection fault occurs
+This lead to double fault
+
+Guard page: special memory page at bottom of stack. detects stack overflow.
+- not mapped to any physical frames. prevents from corrupting other memory by invoking page fault
+- when page fault, cpu tries to push interrupt stack frame onto stack when stack pointer is at non present guard page
+    a second page fault occurs -> double fault -> pushes the exception stack frame
+    but pointer is still at guard page -> triple fault
+
+x86_64 can switch to predefined known good stack when exception occurs.
+- happens at HW level. can be performed before cpu pushes exception stack frame
+- switching mechanism implemented as Interrupt Stack Table (IST)
+
+IST: table of 7 pointers to known good stacks
+- can choose a stack from IST for each exception handler 
+
+On x86_64, TSS (Task State Segment) holds two stack tables
+- since only common field between 32 and 64 bit TSS is pointer to I/O port permission bitmap
+- TSS used to hold info about a task in 32 bit mode
+
+TSS holds: Privilege stack table, interrupt stack table, I/O map base address
+- Privilege stack table: used by cpu when privilege level changes
+    when exception occurs in usermode, cpu switches to kernel mode before invoking exception handler
+
+Global Descriptor Table (GDT): memory segmentation before paging became the standard
+- still needed in 64 bit mode (kernel/user config or TSS loading)
+- contains segments of program. (used to isolate program from each other before paging)
+Now, used for switching between kernel space and user space and loading a TSS structure
+

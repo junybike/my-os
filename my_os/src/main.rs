@@ -16,7 +16,13 @@ pub extern "C" fn _start() -> !
     println!("?????/////");
     
     my_os::init();
-    x86_64::instructions::interrupts::int3();
+    // x86_64::instructions::interrupts::int3();
+
+    fn stackof()
+    {
+        stackof();
+    }
+    stackof();
 
     #[cfg(test)]
     test_main();

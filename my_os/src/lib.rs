@@ -27,6 +27,8 @@ pub fn exit_qemu(exit_code: QemuExitCode)
 pub mod vga_buffer;
 pub mod serial;
 pub mod interrupts;
+pub mod gdt;
+
 use core::panic::PanicInfo;
 
 pub trait Testable {
@@ -61,6 +63,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 
 pub fn init()
 {
+    gdt::init();
     interrupts::init_idt();
 }
 
