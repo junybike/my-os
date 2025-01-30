@@ -33,3 +33,5 @@ Integration tests: treated as separate executable.
 CPU exception: code performs invalid operations (divide by 0)
 Page tables: defines which memory regions are valid and accessible
 Userspace program: limited access to system's resource
+
+-
