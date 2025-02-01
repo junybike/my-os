@@ -1,6 +1,37 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use crate::{gdt, println};
+use crate::{gdt, println, print};
 use lazy_static::lazy_static;
+use pic8259::ChainedPics;   // represents primary/secondary PIC layout
+use spin;
+
+// Sets offsets for PICs to range 32 to 47
+pub const PIC_1_OFFSET: u8 = 32;
+pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+pub static PICS: spin::Mutex<ChainedPics> = 
+    spin::Mutex::new(unsafe{ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET)});
+// ChainedPics is unsafe since wrong offsets can cause undefined behavior
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum InterruptIndex 
+{
+    Timer = PIC_1_OFFSET,
+    Keyboard,
+}
+
+impl InterruptIndex 
+{
+    fn as_u8(self) -> u8 
+    {
+        self as u8
+    }
+
+    fn as_usize(self) -> usize 
+    {
+        usize::from(self.as_u8())
+    }
+}
 
 lazy_static!
 {
@@ -14,8 +45,67 @@ lazy_static!
             idt.double_fault.set_handler_fn(double_fault_handler)
             .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
+
+        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
+        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
+
         idt
     };
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
+{
+    print!(".");
+    unsafe 
+    {
+        // notify_end_of_interrupt figures out whether primary or secondary PIC sent the interrupt.
+        // then uses command and data port to send EOI signal to respective controllers
+        // May delete an important unsent interrupt or cause system to hang if wrong interrupt vector number is used
+        PICS.lock().
+        notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+    }
+}
+
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame)
+{
+    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+    use spin::Mutex;
+    use x86_64::instructions::port::Port;
+
+    lazy_static! // to create static keyboard object protected by Mutex
+    {
+        // Initializing keyboard (US) and scancode set 1.
+        // the HandleControl parameter allows to map ctrl + [a-z] Unicode characters and ignores it 
+        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> =
+            Mutex::new(Keyboard::new(ScancodeSet1::new(), layouts::Us104Key, HandleControl::Ignore
+        ));
+    }
+
+    // On each key press, lock the Mutex and read scancode from keyboard controller.
+    // Pass it to add_byte method to translate scancode to Option<KeyEvent>
+    // KeyEvent contains key which caused the event and whether it was a press or release event 
+    let mut keyboard = KEYBOARD.lock();
+    let mut port = Port::new(0x60);
+    let scancode: u8 = unsafe { port.read() };
+
+    // process_keyevent translates key event to character
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) 
+    {
+        if let Some(key) = keyboard.process_keyevent(key_event) 
+        {
+            match key 
+            {
+                DecodedKey::Unicode(character) => print!("{}", character),
+                DecodedKey::RawKey(key) => print!("{:?}", key),
+            }
+        }
+    }
+
+    unsafe 
+    {
+        PICS.lock()
+        .notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
+    }
 }
 
 pub fn init_idt()

@@ -16,19 +16,20 @@ pub extern "C" fn _start() -> !
     println!("?????/////");
     
     my_os::init();
+
     // x86_64::instructions::interrupts::int3();
 
-    fn stackof()
-    {
-        stackof();
-    }
-    stackof();
+    // fn stackof()
+    // {
+    //     stackof();
+    // }
+    // stackof();
 
     #[cfg(test)]
     test_main();
     
-    println!("running...");
-    loop {}
+    println!("Did not crash :o");
+    my_os::hlt_loop();
 }
 
 #[cfg(not(test))]
@@ -36,7 +37,7 @@ pub extern "C" fn _start() -> !
 fn panic(info: &PanicInfo) -> ! 
 {
     println!("{}", info);
-    loop {}
+    my_os::hlt_loop();
 }
 
 #[cfg(test)]

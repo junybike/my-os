@@ -180,19 +180,34 @@ macro_rules! println
 pub fn _print(args: fmt::Arguments) 
 {
     use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;
+
+    // without_interrupts: takes a closure and executes it in interrupt free environment
+    // to ensure no interrupt can occur as long as mutex is locked
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
 #[test_case]
 fn test_println_output() 
 {
-    let s = "Some test string that fits on a single line";
-    println!("{}", s);
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
 
-    // After using println, iterates over screen characters of static WRITER which represents VGA text buffer
-    for (i, c) in s.chars().enumerate() 
-    {
-        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-        assert_eq!(char::from(screen_char.ascii_character), c);
-    }
+    let s = "Some test string that fits on a single line";
+    
+    // disable other interrupts for the test
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();     // lock WRITER for the test
+        writeln!(writer, "\n{}", s).expect("writeln failed");   // writeln allows printing to already locked writer
+        // prints \n before printing 's' to avoid failure when timer handler already printed some . to current line 
+
+        // After using println, iterates over screen characters of static WRITER which represents VGA text buffer
+        for (i, c) in s.chars().enumerate() 
+        {
+            let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
 }

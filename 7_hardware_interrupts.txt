@@ -1,0 +1,68 @@
+Programmable interrupt controller: to forward hardware interrupts to CPU
+
+Interrupts provide a way to notify CPU from attached hw devices
+- kernel doesnt check keyboard for new characters
+- keyboard notify kernel of each keypress
+
+Separate interrupt controller aggregates interrupts from all devices then notify CPU
+Most interrupt controllers are programmable.
+- they support different priority levels for interrupts
+
+                                    ____________             _____
+               Timer ------------> |            |           |     |
+               Keyboard ---------> | Interrupt  |---------> | CPU |
+               Other Hardware ---> | Controller |           |_____|
+               Etc. -------------> |____________|
+
+HW interrupts occur asynchronously. They are independent from executed code and occur at any time 
+- causes concurrency in kernel with potential concurrency bugs
+    rust's ownership model helps (mutable global states)
+
+Intel 8259
+- has 8 interrupt lines and some lines for communicating with CPU
+- usually had two 8259 PIC: one primary and one secondary PIC
+
+Real Time Clock --> |            |   Timer -------------> |            |
+ACPI -------------> |            |   Keyboard-----------> |            |      _____
+Available --------> | Secondary  |----------------------> | Primary    |     |     |
+Available --------> | Interrupt  |   Serial Port 2 -----> | Interrupt  |---> | CPU |
+Mouse ------------> | Controller |   Serial Port 1 -----> | Controller |     |_____|
+Co-Processor -----> |            |   Parallel Port 2/3 -> |            |
+Primary ATA ------> |            |   Floppy disk -------> |            |
+Secondary ATA ----> |____________|   Parallel Port 1----> |____________|
+
+Each controller can be configured through two I/O ports. (command and data ports)
+Primary: 0x20 for command and 0x21 for data
+Secondary: 0xa0 for command and 0xa1 for data
+
+Default configuration of PICs must be remapped as it maps interrupt from 0 to 15
+- CPU exceptions already occupies them
+- configuration happens by writing special values to command and data ports of the PICs
+
+PIC expects end of interrupt (EOI) signal from interrupt handler
+- the signal tells controller that interrupt was processed and system is ready to receive next interrupt
+- without EOI, PIC thinks we're busy processing first timer interrupt and waits for EOI signal before sending next one
+
+HW Timer: Programmable Interval Timer (PIT)
+- can configure interval between two interrupts
+- timer interrupts occur asynchronously. It can interrupt _start function any time
+
+Disabling interrupts to solve deadlock caused by print:
+- may increase worst-case interrupt latency (must be disabled for a very short time)
+
+hlt instruction: halt CPU until next interrupt arrives
+
+Before implementing keyboard interrupt handler,
+double fault occurs when a key is pressed.
+ - key pressed -> keyboard sends interrupts to PIC -> PIC forwards to CPU -> CPU looks for handler function in IDT
+ - but no hanlder for it.
+
+After handling keyboard interrupt, it prints 'k' when a key is pressed but just for once.
+- keyboard controller wont send another interrupt until we read the scancode of pressed key
+
+Interpreting scancode 
+scancode sets: standards for mapping between scancodes and keypress
+emulated existing sets and extended them
+scancode set 1 XT: lower 7 bits of scancode bytes defines the key, most significant bit defines whether its a press (0) or release (1)
+- keys not present on original IBM XT keyboard (enter key on keypad) generates two scancodes in succession
+- a 0xe0 escape byte and then a byte representing the key
