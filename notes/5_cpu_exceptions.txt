@@ -96,3 +96,13 @@ breakpoint exception: exception to test exception handling.
 load method: expects &'statc self (valid reference for the complete runtime of program)
 CPU accesses table on every interrupt until we load a different IDT.
 Using shorter lifetime than 'static could lead to use after free bugs
+
+---------------------
+
+Interrupt
+Interrupt handlers
+Page fault
+IDT, IDTR
+Calling conventions
+Interrupt stack frame
+- 7 steps

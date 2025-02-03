@@ -7,7 +7,7 @@ After executing tests, 'test_runner' returns to 'test_main' function
 
 To communicate between CPU and peripheral HW on x86
 - memory mapped I/O: memory address is mapped to some memory on VGA device
-- port mapped I/O: each peripheral has one or more port numbers and communicate with cpu instruction in and output 
+- port mapped I/O: each peripheral has one or more port numbers and communicate with cpu instruction in and out
     (takes a port number and a data type)
 
 isa_debug_exit uses port-mapped I/O
@@ -34,4 +34,9 @@ CPU exception: code performs invalid operations (divide by 0)
 Page tables: defines which memory regions are valid and accessible
 Userspace program: limited access to system's resource
 
--
+------------------------
+
+memory-mapped I/O
+port-mapped I/O
+Serial port
+- port address

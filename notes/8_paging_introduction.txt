@@ -1,0 +1,194 @@
+OS must isolate programs from each other
+- OS utilize HW functionality to ensure that memory areas of one process arent accessible by other processes
+
+ARM Cortex-M processors have Memory Protection Unit (MPU)
+- allows to define a small number of memory regions with different access permissions
+- On each memory access, MPU ensures that address is in a region with correct access permissions
+- Changing regions and access permissions on each process switch: OS ensures that each accesses its own memory
+    *isolates processes from each other
+
+x86_64 memory protection approaches: segmentation, paging
+
+--------------------
+
+Segmentation:
+- orginally to increase amount of addressable memory.
+- additional segment registers introduced: each contains an offset address
+    CPU automatically added this offset to each memory access to save up 1MiB of memory
+
+Sement registers are chsoen by CPU depending on the kind of memory access
+- Fetching instruction: code segment CS is used
+- Stack operations: stack segment SS is used
+- other instruction: data segment DS or extra segment ES is used
+- FS and GS can be used freely
+
+Segment registers directly contains offset and no access control was performed
+Protected mode: segment descriptors contain an index to local or global descriptor table
+- global descriptor table contains segment size and access permissions (in addition to offset address)
+
+Loading separate global/local descriptor table for each process -> confine memory accesses to process's own memory areas
+-> OS can isolate processes from each other
+Modifying memory addresses before actual address: segmentation uses virtual memory
+
+-----------------------------
+
+Virtual memory
+- abstract memory addresses from underlying physical storage device
+- provide translation step first before directly accessing storage device
+Segmentation's translation step:
+- add offset address of active segment
+- accessing address 0x1234000 in a segment with offset 0x1111000 -> actual address: 0x2345000
+
+Addresses before translation: Virtual. After translation: physical
+Physical addresses are unique, refer to same distinct memory location
+Virtual addresses: depends on translation function
+- possible to refer to same physical address, possible for identical virtual address to refer different physical address when different translation function is used
+
+Advantage: programs can be placed at arbitrary physical memory locations even if they use completly different virtual addresses
+- OS utilizes full amount of available memory without recompiling programs
+
+--------------
+
+Fragmentation
+- when there are enough spaces but not continuous memory (memory cannot be overlapped)
+
+One possible solution: pause execution, move used parts of memory, update translation, resume.
+- may need to copy large data 
+Fragmentation is one of reason that segmentation is no longer used
+- replaced with paging
+
+----------------------
+
+Paging
+- divide both virtual and physical memory space to small fixed size blocks
+
+Pages: blocks of virtual memory spaces
+Frames: blocks of physical address space
+
+Each pages can be individually mapped to a frame.
+- possible to split larger memory regions across non continuous physical Frames
+
+Internal fragmentation: not every memory region is an exact multiple of page size
+- program size 101 needs 3 pages of size 50. last page occupy 49 bytes more than needed
+External fragmentation: fragmentation that happens when using segmentation
+
+Page table
+- stores mapping information for pages mapped to a frame
+- each program instance has its own page table
+- pointer to currently active table is stored in special CPU registers
+    (On x86, register is called CR3)
+    OS load this register with pointer to the correct page table before running each program instance
+
+In each memory access
+- CPU reads table pointer from register and looks up mapped frame for accessed page in table
+- done in HW, invisible to running program
+- CPU may use cache that remembers results of last translation to speed up translation process
+
+Page table may store attributes such as access permission in flags field
+
+In larger address spaces, they waste memory
+Example: program uses four virtual pages 0, 1M, 1M50, 1M100
+CPU cannot jump directly to correct entry in translation process
+- cant omit empty entries
+- not guranteed that fourth page uses fourth entry
+
+Mutilevel (hierarchical) page tables
+- use different page tables for different regions
+- level 2 page table: contains mapping between address regions and level 1 page tables
+    page 0 falls to first 10,000 byte region: points to level 1 page table T1
+    page 1M, 1M50, 1M100 all falls to 100th 10,000 byte region: points to level 1 page table T2
+- still have 100 empty entries in level 2 table but fewer than million entry entries
+    no need to create level 1 tables for unmapped memory regions between 10,000 and 1M
+
+Page table register points to highest level table, points to next lower level table, ..., lowest table points to mapped frame
+
+----
+
+Paging on x86_64
+- uses 4 level page table.
+- page size: 4KiB
+- each page table (independent of the level) has fixed size of 512 entries
+- each entry: 8 bytes
+- each table: 512 * 8B = 4KiB (fits exactly to one page)
+
+Each table index consists 9 bits.
+- each table has 2^9 = 512 entries.
+- lowest 12 bits are offset in 4KiB page (2^12 bytes = 4KiB)
+- Bits 48 to 64 are discarded. x86_64 only supports 48 bit addresses.
+- Bits 48 to 64 cannot be arbitrary values. all bits in this range copies the bit 47
+    keeps unique address and allow future extensions (5 level page table: sign extension) 
+
+All addresses in page tables are physical instead of virtual
+- otherwise cpu translates those addresses too and may cause never ending recursion
+
+Permissions in higher level pages restricts possible permission in lower levels
+if level 3 entry is read only, no pages that use this entry can be writable even if lower level specify read/write permissions
+
+At maximum:
+- one level 4 table
+- 512 level 3 tables (level 4 table has 512 entries)
+- 512 * 512 level 2 tables (each 512 of level 3 tables has 512 entries)
+- 512 * 512 * 512 level 1 tables (512 entries for level 2 tables)
+
+Each entry is 8 bytes
+0 to 11: flags
+12 to 51: store physical frame address
+52 to 62: used freely by OS
+63: forbid executing code on this page
+
+Always points to 4096 byte aligned address either to a page-aligned page table or to start of mapped frame
+- bits 0 to 11 are always zero. no need to store bits since HW can set them to zero before using address
+- same for bits 52 to 63 (x86_64 only supports 52 physical addresses)
+
+bit 0 present flag: differentiates mapped pages from unmapped ones
+- to temporarily swap out pages to disk when main memory becomes full
+- when page is accessed subsequently, special exception called page fault occurs
+    OS can react by reloading missing page from disk and continue program
+
+bit 1 and 63 writable and no execute flag: controls whether contents of page are writable or contains executable instructions
+
+bit 5, 6 accessed and dirty flags: set by CPU when read or write to a page occurs
+- to decide which page to swap out or whether the page contents have been modified since last saves to disk
+
+bits 3, 4 write through caching and disable cache: allow control of caches for every page individually
+
+bit 2 user accessible flag makes a page available to userspace code
+- otherwise, only accessible when CPU is in kernel mode (can used to make system calls faster by keeping kernel mapped while userspace program is running)
+- Spectre vulnerability allow userspace program to read these pages nonetheless
+
+bit 8 global flag: signals to HW that page is available in all address spaces and no need to be removed from translation cache on address space switches
+- commonly used together with cleared user accessible flag to map kernel code to all address spaces
+
+bit 7 huge page flag allows creation of pages of larzer sizes by letting entries of level 2 or 3 page table directly point to mapped frame
+- page size increases by factor 512 to 2MiB = 512 * 4KiB for level 2 entries
+- 1GiB = 512 * 2 MiB for level 3 entries
+- Advantage: fewer lines of translation cache and fewer page tables
+
+------------------
+
+Translation lookaside buffer
+- avoid 4 memory accesses every time (4 level page table)
+- caches last few translations in translation lookaside buffer. skips translation when it is still cached
+
+Not fully transparent and does not update or remove translation when contents of page tables change
+- kernel manually update TLB whenever it modifies a page table
+- invlpg: removes translation for specified page from TLB.
+    Loads again from page table on next access
+    TLB can be flushed by reloading CR3 register (simulates address space switch)
+
+Important to flush TLB on each page table modification.
+- otherwise, CPU may keep use old translation -> non deterministic bugs (hard to debug)
+
+----------------------
+
+Bootloader sets 4 level paging hierarchy that maps every page of kernel to physical frame
+Every memory address used in our kernel was virtual address
+ - bootloader identify mapped that memory page (0xb8000)
+
+Paging makes our kernel safe since every memory accessed not in bound causes page fault exception
+- bootloader sets correct access permission for each page -> pages containing code are executable and only data pages are writable
+
+Accessing physical memory directly isnt possible when paging is active
+- program may circumvent memory protection and access memory of other program otherwise
+This problem of creating mappings for page table frames is a general problem
+- kernel needs to access page tables regularly (allocating a stack for new thread)

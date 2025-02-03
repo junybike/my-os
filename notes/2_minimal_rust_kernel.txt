@@ -23,3 +23,9 @@ Disable if SIMD state is large and interrupts can occur often.
 compiler_builtins: contains implementation of memset, memcpy, memcmp
 
 VGA text buffer: memory area mapped to VGA HW that contains the contents displayed on screen
+
+------------------
+
+Bootimage
+- to turn our compiled kernel to a bootable disk image, need to link it with a bootloader
+- compiled kernel and bootloader combined to create a bootable disk image

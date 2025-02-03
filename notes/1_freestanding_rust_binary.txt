@@ -38,3 +38,26 @@ Rust binary linking stdlib:
 
 Freestanding executable (no access to Rust runtime and crt0)
 must define our own entry point by overwriting crt0 entry point
+
+-------------
+
+Disabling the standard library
+- Rust crates link standard library which depends on OS for many features (thread, file, networking)
+- to write an OS, anything that interacts with OS services should be disabled
+- no_std attribute
+Panic implementation
+- error handling
+- PanicInfo parameter has the file and and line where panic happened and optional panic messages
+- diverging function
+eh_personality language item
+- 'copy' trait is a language item that tells compiler which types have 'copy' semantics
+- eh personality item marks a function used for implementing stack unwinding
+- Rust uses unwinding to run destructors of all live stack variables in case of a panic
+    ensures that all used memory is freed and allows parent thread to catch panic and continue execution
+Disabling unwinding
+- unwinding requires OS specific library
+- unwinding alt: abort on panic
+start attribute
+- ipad
+Cross compiler
+- ipad

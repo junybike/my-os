@@ -17,3 +17,10 @@ volatile: tells the compiler that write has side effects and shouldnt be optimiz
 Spinlock: provides mutual exclusion by blocking threads when resource is already locked
  - threads tries to lock it again and again in a tight loop.
  - burns CPU time until mutex is free again
+
+ ------------------
+
+#[repr(u8)]
+VGA buffer
+Volatile
+Spinlock

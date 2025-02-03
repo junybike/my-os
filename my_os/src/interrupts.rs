@@ -1,8 +1,9 @@
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 use crate::{gdt, println, print};
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;   // represents primary/secondary PIC layout
 use spin;
+use crate::hlt_loop;
 
 // Sets offsets for PICs to range 32 to 47
 pub const PIC_1_OFFSET: u8 = 32;
@@ -39,6 +40,7 @@ lazy_static!
     {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt.page_fault.set_handler_fn(page_fault_handler);
         
         unsafe 
         {
@@ -106,6 +108,21 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         PICS.lock()
         .notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
     }
+}
+
+extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: PageFaultErrorCode)
+{
+    // CR2 is set by CPU on page fault and contains accesseed virtual address that caused the page fault
+    use x86_64::registers::control::Cr2;    
+    
+    // Cr::read: reads and print the Cr2 info
+    // PageFaultErrorCode type provides info about the type of memory access caused the page fault
+    // (caused by read or write?)
+    println!("EXCEPTION: PAGE FAULT");
+    println!("Accessed Address: {:?}", Cr2::read());
+    println!("Error Code: {:?}", error_code);
+    println!("{:#?}", stack_frame);
+    hlt_loop();
 }
 
 pub fn init_idt()
