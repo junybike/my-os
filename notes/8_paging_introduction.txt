@@ -192,3 +192,5 @@ Accessing physical memory directly isnt possible when paging is active
 - program may circumvent memory protection and access memory of other program otherwise
 This problem of creating mappings for page table frames is a general problem
 - kernel needs to access page tables regularly (allocating a stack for new thread)
+
+testing
