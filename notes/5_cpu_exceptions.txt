@@ -60,17 +60,17 @@ Exception/interrupt handlers: pushing return address is not suffice
 - interrupt handlers run in different context (Stack pointer, CPU flags)
 Performs:
 0. save old stack pointer
-- cpu reads stack pointer and stack segment register values and remember them in internal buffer
+- cpu reads stack pointer RSP and stack segment register SS values and remember them in internal buffer
 1. aligning stack pointer
 - stack pointer must be aligned on 16-byte boundary, so CPU performs such an alignment right after interrupt
 2. switching stacks
 - switch occurs when CPU privilege level changes (CPU exception in usermode program)
 3. pushing old stack pointer
-- CPU pushes stack pointer and stack segment registers value from step 0 to stack to restore original stack pointer when returning from interrupt handler
+- CPU pushes stack pointer RSP and stack segment registers SS value from step 0 to stack to restore original stack pointer when returning from interrupt handler
 4. pushing and updating RFLAGS register
 - RFLAGS contains various control and status bits. On interrupt entry, CPU changes some bits and pushes the old value
 5. pushing instruction pointer
-- before jumping to interrupt handler function, CPU pushes instruction pointer and code segment.
+- before jumping to interrupt handler function, CPU pushes instruction pointer RIP and code segment.
 - comparable to pushing return address of normal function call 
 6. pushing an error code
 - for some exception, CPU pushes error code which describes cause of exception
