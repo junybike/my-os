@@ -20,3 +20,8 @@ fn panic(info: &PanicInfo) -> !
 {
     my_os::test_panic_handler(info)
 }
+
+#[test_case]
+fn test_println() {
+    println!("test_println output");
+}

@@ -1,0 +1,102 @@
+In 4 level page table, each page entry stores physical address of next table
+- avoids need to run translation
+- probem: cant directly access physical addresses from kernel since kernel runs on virtual addresses
+    must map some virtual pages to them
+
+Solutions
+Identity mapping: identity map all page tables
+- physical addresses of page tables are valid virtual addresses
+- can access page tables of all levels starting from CR3 register
+Cons
+- clutters virtual address space, more difficult to find continuous memory regions of larger sizes
+    to create 1000KiB, cant start the region at 28KiB. Must look further until we find a large enough unmapped area
+    similar problem to segmentation
+
+Map at a fixed offset: to avoid cluttering virtual address space
+Use separate memory region for page table mapping by mapping at a fixed offset in virtual address space 
+- by using virtual memory in range 10TiB + physical memory size for page table mapping, avoids collision problem of identity mapping
+- reserving a large region of virtual address space is possible if virtual address space is much larger than physical memory size
+Cons
+- need to create new mapping whenever we create new page table
+- does not allow accessing page tables of other address spaces (good when creating new process) 
+
+Map the complete physical memory: map the complete physical memory instead of only page table frames
+- allows kernel to access arbitrary physical memory including page table frames of other address spaces
+- Same virtual memory range as before but no longer contains unmapped pages
+Cons
+- additional page tables are needed for storing mapping of physical memory
+    must use a part of physical memory to be stored somewhere
+
+On x86_64, can use huge pages with size 2 MiB for mapping
+- mapping 32GiB of physical memory only requires 132KiB for page tables since one level 3 table and 32 level 2 tables are needed
+- huge pages are more cache efficient. fewer entries in translation lookaside buffer (TLB)
+
+Temporary mapping: map the page table frames only temporarily when we need to access them
+- good for devices with limited physical memory
+- only need a single identity mapped level 1 table
+Visual
+level 1 table controls first 2 MiB of virtual address space (reachable by starting at CR3 register and following 0th entry in level 4, 3, 2 page tables)
+entry with index 8 maps virtual page at address 32 KiB to physical frame at address 32KiB (identity mapping level 1 table) horizontal arrow is identity mapping
+- writing identity mapped level 1 table -> kernel can create upto 511 temporary mappings (512 - entry for identity mapping)
+kernel created 2 temporary mappings: 
+- mapping 0th entry of level 1 table to frame with address 24KiB
+    created temporary mapping of virtual page at 0KiB to physical frame of level 2 page table 
+- mapping the 9th entry of level 1 table to frame with address 4KiB
+    created temporary mapping of virtual page at 36KiB to physical frame of level 4 page table
+
+kernel can access level 2 pages table by writing to page 0KiB and level 4 page table by writing to page 36KiB
+Process for accessing arbitrary page frame with temporary mapping:
+1. search a free entry in identity mapped level 1 table
+2. map that entry to physical frame of page table that we want to access
+3. access target frame through virtual page that aps to entry
+Reuses same 512 virtual pages for creating mappings and require only 4KiB of physical memory
+Since new mapping may require modifications to multiple table leves, need to repeat above process multiple times
+
+Recursive Page tables: mapping page table recursively
+- map an entry from level 4 page table to level 4 page itself
+- reserves a part of virtual address space and map all current future page table frames to that space
+    entry at index 511 in level 4 table is mapped to physical frame 4KiB, the frame of level 4 table itself
+    letting cpu following this entry on translation doesnt reach level 3 table but level 4 table again
+        cpu assumes that in every entry in level 4 table points to level 3 table, so it treats level 4 table as a level 3 table
+
+shortens number of levels that CPU traverses
+- if following recursive entry once and then to level 3 table, cpu thinks that level 3 table is level 2 table
+    going further, it treats level 2 as level 1 and level 1 as mapped frame
+        can read and write level 1 page since cpu thinks that it is the mapped frame
+Cons
+occupies large virtual memory (512 GiB) may lead to suboptimal cache behavior
+only allows accessing currently active address space easily.
+relies on page table format of x86. may not work on other architectures
+
+--------
+
+bootloader: creates page tables that our kernel runs on
+- has access to page tables (can create any mappings)
+- map_physical_memory feature maps complete physical memory somewhere to virtual address space (map complete physical memory approach)
+    kernel can access to all physical memory
+- recursive_page_table feature: bootloader maps entry of level 4 page table recursively (recursive page section)
+
+bootloader crate defines BootInfo struct containing all info passed to our kernel
+map_physical_memory has fields: memory_map and physical_memory_offset
+
+memory_map: has overview of available physical memory. 
+- Tells kernel how much physical memory is available in system and which memory regions are reserved for devices (VGA HW)
+- queried from very early in boot process. must be provided by bootloader since kernel cant retrieve it later
+physical_memory_offset: tells the virtual start address of physical memory mapping
+- adding offset to a physical address, we get corresponding virtual address (can access arbitrary physical memory from kernel)
+
+-------------------
+Basis of abstraction, traits that define various page table mapping function
+
+Mapper trait: generic over page size and provides function that operate on pages
+- translate_page: translate given page to frame of same size 
+- map_to: creates new mapping in page table
+Translate trait: provide function that works with multiple page sizes
+- translate_addr
+- translate
+
+x86_64 crate provides types that implement the traits with different requirements
+OffsetPageTable: assumes that complete physical memory is mapped to virtual address space at some offset
+MappedPageTable: only requires that each page table frame is mapped to virtual address space at a calculable address
+RecursivePageTable: used to access table frames through recursive page tables
+
