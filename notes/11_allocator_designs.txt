@@ -1,0 +1,115 @@
+Allocator responsibility: 
+- manage available heap memory
+- return unused memory on alloc 
+- keep track of memory freed by dealloc to reuse
+- do not hand out memory already in use
+
+Secondary design goal
+- allocator effectively utilize available memory and keep fragmentation low
+- should work well for concurrent application and scale to any number of processors
+- for max performance, optimize memory layout wrt CPU caches to improve cache locality and avoid false sharing
+
+Bump allocator (stack allocator)
+- allocate memory linearly. only keep track of number of allocated bytes and number of allocations
+- limitation: it can only free all memory at once
+Idea:
+- next variable. its at start address of heap. in each allocation, next is increasedd by allocation size
+- next always points to boundary between used and unused memory
+- next only moves in single direction. therefore, never send same memory region twice
+- by reaching the end of heap, no more memory allocation. (out of memory error on next allocation)
+- allocation counter: increase by 1 every alloc call, decrease by 1 every dealloc call
+    reaching 0: all allocations on heap have deallocated (next points to start address of heap)
+Advantage
+- very fast
+Limit
+- only reuse deallocated memory after all allocations have been freed
+Potential tricks to fix
+- update dealloc to check if freed allocation was last allocation returned 
+    by alloc by comparing its end address with next pointer. then reset next back to start address of freed location
+- alloc_back method: allocate memory from the end of heap using additional next_back field
+    for long lived allocations (separating short and long lived allocation)
+
+Linked List Allocator
+- to keep track of arbitrary number of free memory areas, stores info about freed region in the region it self
+    can keep track of unbounded number of freed regions without using additional memory
+- each node contains: size of memory region, pointer to next unused memory region
+    just need one pointer to first unused region to keep track of all unused region (free list)
+
+new function doesnt initialize allocator with heap bounds
+- Initialization requires writing a node to heap memory (can happen only in runtime)
+new function needs to be const function that can be evaluated at compile time since it will be used for initializing ALLOCATOR static
+- must have non constant init method
+
+LinkedListAllocator
+step 0: shows state of heap before add_free_region is called
+step 1: add_free_region is called with memory region marked as free
+- method creates new node on its stack with size of freed region
+- uses the Option::take method to set next pointer of node to current head pointer (resets head pointer to None)
+step 2: the method writes newely created node to beginning of freed memory region through write method
+- points the head pointer to new node
+
+find_region
+step 1: both region.next and current.next are reset to None by Option::take method
+    original pointers are stored in local variables next and ret
+step 2: current.next pointer set to local next pointer which is original region.next pointer
+    current directly points to the region after 'region', so 'region' is no longer element of linked list
+function returns pointer to 'region' stored in local ret variable 
+
+alloc_free_region: to determine if a region is suitable for allocation with a given size and alighnment
+
+Drawback of LinkedListAllocator
+- never merges them back together
+- performs worse. allocation request may traverse complete linked list until it finds a suitable block
+
+linked_list_allocator helps merging strategy by
+- keeps list sorted by start address, so it can merge on deallocate call by examining addresses and sizes of two neighboring blocks in list
+
+Fixed Size block allocator
+- often returns blocks larger than needed for allocation
+    wastes memory due to internal fragmentation but reduces time required to find suitable block and better performance
+- defines small number of block sizes and round up each allocation to next block size
+    block sizes: 16, 64, 512 bytes. Allocating 4 bytes -> return 16 byte block, 48 bytes -> 64 byte block
+- create separate list for each size class
+
+allocation step
+1. round up requested allocation size to next block size: 12 bytes request -> 16 byte block
+2. retrieve head pointer for list: for block size 16 -> use head_16 pointer
+3. remove first block from list and return it (Returns first element of list. no need to traverse full list)
+
+deallocation step
+1. round up freed allocated size to next block size (since compiler only pass the requested allocation size to dealloc, not the size of block returned by alloc)
+2. by using same size-adjustment function in both alloc and dealloc, can be sure that it is freeing correct amount of memory
+3. retrieve head pointer for list and add freed block to front of list by updating head pointer
+No traversal of list needed
+
+no differentiating between blocks allocated from a block list and blocks allocated from fallback allocator
+- new blocks created in alloc are added to block list on dealloc. increases number of blocks of that size
+alloc method is only place where new blocks are created in implementation
+- initially start with empty block lists and only fill lists when allocations of their block size are performed
+no need unsafe blocks in alloc and dealloc. Rust treats complete body of unsafe functions as one large unsafe block
+
+Possible Improvement
+- pre-fill lists to improve performance of initial allocations instead of allocating blocks lazily using fallback allocator
+- only allow block sizes that are powers of 2 so we can use them as block alighnment
+    if storing alignment in different way, may allow arbitrary block sizes. can add more block sizes
+- instead of falling back to linked list allocator, have special allocator for allocating greater than 4KiB to map continous block of virtual memory to non continuous physical frames
+    utilize paging as it operates on 4KiB pages. 
+    fragmentation of unused memory is no longer problem for large allocation
+- with page allocator, add block sizes upto 4KiB and drop linked list allocator to reduce fragmentation and improve performance
+
+Variations
+
+Slab allocator
+- uses block sizes that directly correspond to selected types in kernel
+- allocations of those types fit a block size exactly and no memory is wasted
+- could pre initialize type instances in unused blocks to improve performance
+- often combined with other allocators (fixed size block allocator) to split alllocated block to reduce memory waste
+
+Buddy allocator
+- uses binary tree with power of 2 block sizes
+    when new block of certain size is required, it splits larger sized block into half by creating two child nodes in tree
+- whenever freed, its neighbor block in tree is analyzed. if neighbor is also free, two blocks are joined back together to form block of twice the size
+- reduces external fragmentation. small freed blocks can be reused for large allocation
+- no fallback allocator. performance is more predictable
+- drawback: only power of 2 block are allowed. may result in large amount of wasted memory due to internal fragmentation
+    often combined with slab allocator to split allocated block into multiple smaller blocks

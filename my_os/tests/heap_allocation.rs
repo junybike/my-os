@@ -76,3 +76,18 @@ fn many_boxes()
         assert_eq!(*x, i);
     }
 }
+
+// long_lived allocation lives for whole loop execution
+// creates long_lived allocation at first (start of heap)
+// in each iteration, short lived allocation is created and freed again before next iteration
+// (counter is 2 at the beginning of iteration and decrease to 1 at the end)
+// In bump allocator, counter does not fall to 0 before the end of the loop
+#[test_case]
+fn many_boxes_long_lived() {
+    let long_lived = Box::new(1); // new
+    for i in 0..HEAP_SIZE {
+        let x = Box::new(i);
+        assert_eq!(*x, i);
+    }
+    assert_eq!(*long_lived, 1); // new
+}

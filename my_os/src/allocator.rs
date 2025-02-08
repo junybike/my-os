@@ -1,4 +1,4 @@
-use linked_list_allocator::LockedHeap;
+// use linked_list_allocator::LockedHeap;
 use alloc::alloc::{GlobalAlloc, Layout};
 use core::ptr::null_mut;
 use x86_64::{
@@ -7,16 +7,49 @@ use x86_64::{
     },
     VirtAddr,
 };
+// use bump::BumpAllocator;
+// use linked_list::LinkedListAllocator;
+use fixed_size_block::FixedSizeBlockAllocator;
 
 pub struct Dummy;
+pub mod bump;
+pub mod linked_list;
+pub mod fixed_size_block;
 
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024;    // 100 KiB
 // trying to use this heap region will result in page fault since virtual memory region is not mapped to physical memory yet
 // must have init_heap that maps the heap page
 
+// need our own wrapper type around spin:Mutex
+// Rust doesnt allow trait implementation for types defined in other crates
+//
+// A generic wrapper around spin::Mutex<A>
+// no restrictions on wrapped type A. can wrap all kinds of types
+pub struct Locked<A>
+{
+    inner: spin::Mutex<A>,
+}
+impl<A> Locked<A>
+{
+    pub const fn new(inner: A) -> Self
+    {
+        Locked
+        {
+            inner: spin::Mutex::new(inner),
+        }
+    }
+    pub fn lock(&self) -> spin::MutexGuard<A>
+    {
+        self.inner.lock()
+    }
+}
+
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
+// static ALLOCATOR: Locked<LinkedListAllocator> = Locked::new(LinkedListAllocator::new());
+// static ALLOCATOR: Locked<BumpAllocator> = Locked::new(BumpAllocator::new());
+// static ALLOCATOR: LockedHeap = LockedHeap::empty();
 // LockedHeap uses Spinklock type for synchronization
 // to allow multiple threads access ALLOCATOR static at the same time
 // Do not perform allocations in interrupt handlers (may run at arbitrary time and interrupt an in-progress allocation)
@@ -94,4 +127,17 @@ pub fn init_heap(
 
     Ok(())
 }
+
+
+/// Align the given address `addr` upwards to alignment `align`.
+///
+/// Requires that `align` is a power of two. Guranteed by utilizing GlobalAlloc trait
+fn align_up(addr: usize, align: usize) -> usize 
+{
+    (addr + align - 1) & !(align - 1)
+}
+// align - 1: 0b00011111 if aligh is 0b00100000
+// !(align): 0b11100000
+// the bitwise AND aligns the address downwards. works by clearing all bits that are lower than align
+// by increasing addr by align - 1, already aligned address remain same while non aligned are rounded to next alignment boundary
 
