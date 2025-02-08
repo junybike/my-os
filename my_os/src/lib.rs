@@ -7,6 +7,7 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
+
 pub enum QemuExitCode 
 {
     Success = 0x10,
@@ -24,11 +25,13 @@ pub fn exit_qemu(exit_code: QemuExitCode)
     }
 }
 
+extern crate alloc;
 pub mod vga_buffer;
 pub mod serial;
 pub mod interrupts;
 pub mod gdt;
 pub mod memory;
+pub mod allocator;
 
 #[cfg(test)]
 use bootloader::{entry_point, BootInfo};

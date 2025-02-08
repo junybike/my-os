@@ -1,0 +1,73 @@
+Local variables: stored on call stack. only valid until surrounding function returns
+- call stack = stack data structure which supports push and pop operation
+- each function entry, parameter, return address, local variables of called functions are pushed by compiler
+
+Compiler enforces lifetimes and throws error when we use a value for too long
+- to make variable live longer than function, use static variable to extend the lifetime
+
+Static variables: stored at fixed memory location. always live for complete lifetime of program
+- assigned at compile time by linker and encoded in executable
+- can always be referenced from local variable
+- their location is known at compile time. no reference needed for accesing them
+- read only by default (data race: two threads modified a static variable at the same time)
+    must encapsulate in mutex to modify (ensures that one &mut reference exists at any point)
+
+In println, uses static Writer -> no &mut Writer needed to invoke the macro
+- useful in exception handlers
+
+Local variable limit: 
+- live only until the end of surrounding function or block
+- have a fixed size
+
+Static variable limit: 
+- always live for complete runtime of program.
+    cant reclaim and reuse their memory when theyre no longer needed
+- has to be protected by Mutex when modifying
+- have a fixed size
+
+Dynamic memory
+- uses heap memory. allocates a memory block of required size
+- lives until it is explicitly freed through a call to deallocate
+- memory can be reused after it is freed
+- may cause memory leak: cause of excessive consumption of programs
+
+Common error
+- use after free: continues to use a variable after deallocating it
+- double free: frees a variable twice. it may free a different allocation that was allocated in same spot after the first deallocate call
+    may lead to use after free again
+
+Garbage collection: program regularly pauses and scan for unused heap variables to automatically deallocate
+- eliminates the above vulnerability
+- but performance overhead
+
+Rust's approach: ownership
+- check correctness of dynamic memory operations at compile time
+- still has finegrained control over the use of dynamic memory
+
+Box: abstraction for heap allocated value
+
+Type alone does not suffice to prevent all use after free bugs
+- it can hold on to references after Box goes out of scope
+    corresponding heap memory slot gets deallocated
+
+Ownership: assign abstract lifetime to each reference
+- by checking that all borrows end before an object is destroyed, compiler can gurantee that no use after free can occur
+- provides memory safety as garbage collector
+- provides thread safety. safer than multi-threaded code
+- all checks happen at compile time. no runtime overhead.
+
+Dynamic memory allocation
+- comes with performance overhead since it has to find free slot on heap for every allocation
+Need dynamic memory when
+- variable has a dynamic lifetime or variable size
+- Rc: dynamic lifetime. counts references to its wrapped value and deallocates it after all reference go out of scope
+
+global_allocator attribute: tells rust compiler which allocator instance it should use as global heap allocator
+- attribute is only applicable to static that implements the GlobalAlloc trait
+
+Kernel heap: to create a proper allocator, need to create a heap memory region for allocator to allocate memory
+- need to define virtual memory range for heap region and map this region to physical frames
+Step 1
+- define a virtual memory region for heap (choose any virtual address range that we like as long as its not already used for different memory region)
+
+Allocator
