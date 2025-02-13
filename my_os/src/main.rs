@@ -10,6 +10,23 @@ use core::panic::PanicInfo;
 use my_os::println;
 use bootloader::{BootInfo, entry_point};
 use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
+use my_os::task::{Task, simple_executor::SimpleExecutor};
+use my_os::task::keyboard;
+use my_os::task::executor::Executor;
+
+// compiler will transform it into state machine that implements Future
+// Future will return Poll::Ready(42) on first poll call
+async fn async_number() -> u32
+{
+    42
+}
+// to run future returned by example_task, need to call poll on it until signals its completion by returning Poll::Ready
+// must create executor type
+async fn example_task()
+{
+    let number = async_number().await;
+    println!("async number: {}", number);
+}
 
 // _start is called externally from bootloader. no checking of function signature.
 // could take arbitrary args without compilation error and fail or cause undefined behavior at runtime
@@ -56,6 +73,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> !
     println!("current reference count is {}", Rc::strong_count(&cloned_reference));
     core::mem::drop(reference_counted);
     println!("reference count is {} now", Rc::strong_count(&cloned_reference));
+
+    let mut executor = Executor::new();
+    executor.spawn(Task::new(example_task()));
+    executor.spawn(Task::new(keyboard::print_keypresses())); // new
+    executor.run();
 
     #[cfg(test)]
     test_main();

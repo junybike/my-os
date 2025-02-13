@@ -1,0 +1,170 @@
+Multitasking: execute multiple task concurrently
+- A cpu core can execute single task at a time
+    OS switches between active tasks so each can make a bit of progress
+- multicore cpu: able to run multiple tasks in parallel (8 core cpu -> 8 tasks at a time)
+
+Co-operative multitasking: tasks give up the control of cpu so other can make progress
+pre emptive multitasking: OS switches threads at arbitrary points in time by pausing them
+
+Pre emptive multitasking
+- OS controls when to switch tasks
+- regains control of CPU on each interrupt
+    possible to switch tasks when new input is available to system
+In case they were in middle of calculation, OS backs up the whole state of the task including its call stack and values of CPU registers (context switch)
+To back up, OS sets up a separate call stack for each task. (task with its own stack: thread)
+- only register contents need to be saved on a context switch (minimizes overhead of context switch)
+
+Advantage
+- OS can fully control allowed execution time of a task (Each task gets fair share of CPU time)
+Disadvantage
+- each tasks require its own stack (high memory usage per task. may limits number of tasks in system)
+- OS has to save the complete CPU register state on each task switch
+
+Co-operative multitasking
+- lets each task run until it voluntarily gives up control of CPU
+    pauses them selves at convenient points in time
+- either programmer or compiler inserts yield operation to the programmer
+    gives up control of CPU and other tasks to run. yield can be inserted after each iteration of complex loop
+
+Co-operative mutltasking + asynchronous operation
+- instead of waiting until operation is finished / preventing other tasks from running during this time,
+    asynchronous operation returns not ready status if operation isnt finished yet
+    so the waiting task can execute yield operation to let other tasks run
+
+Saving state: OS no need to save their state since tasks define their pause points themselves
+- they can save the exact state they need for continuation before pausing themselves (result in better performance)
+    task just finished a complex computation only need to back up result of computation
+
+Language supported implementation of cooperative tasks
+- can backup the required parts of call stack before pausing
+    by backing up relevant parts of call stack before pausing, all tasks can share a single call stack (lower memory consumption per task)
+    can create arbitrary number of cooperative tasks without running out of memory
+
+Disadvantage:
+- uncooperative task may run for unlimited amount of time. Prevents other tasks from running and slow/block the whole system
+- must be sure all tasks are known to cooperate
+
+Rust provides support for cooperative multitasking in async / await from
+- futures and asynchronous programming
+
+Futures: a value that might not be available yet
+- value that is computed by another task or file that is downloaded from network
+- makes it possible to continue execution until value is needed
+- when available, it is returned wrapped in Ready variant. otherwise, Pending variant is returned
+
+Future combinators: methods like map that allow chaining and combining futures together (similar to methods of Iterator trait)
+- instead of waiting for future, combinators return a future themselves
+
+Advantage:
+- keeps operations asynchronous. In combinations with asynchronous I/O, very high performance
+- future combinators are implemented as normal structs with trait implementations (compiler can excessively optimize them)
+Disadvantage:
+- difficult to use in some cases due to type system and closure based interface
+
+Async/await: let programmer write code that looks like normal synchronous code but compiler turns it into asynchronous.
+async: keyword used in function signature to turn synchronous function to asynchronous function that returns a future
+- inside async function, await keyword is used to retrieve asynchronous value of future
+
+Compiler convert body of async function to state machine with each .await call representing different state
+- each state represents different pause point in function
+
+To continue from last waiting state, state machine must keep track of current state internally.
+- must save all variables it need to continue execution on next poll call
+- it knows which variables are used when -> can automatically generate structs with exactly the variables that are needed
+
+Pinning
+Self-referential structs
+- structs with internal pointers (reference themselves from one of their fields)
+Problem:
+- when array is moved to different address, the pointer pointing to last element of array must get updated
+    lead to undefined behavior on next poll call
+Solution:
+- update pointer on move 
+(huge performance cost. must keep track of type of all struct field and check every move operation whether pointer update is required)
+- store offset instead of self reference
+store in form of element_offset field with value 8 since array element that reference points to starts 8 bytes after struct's beginning
+since offset stays same when struct is moved, no field update required
+still requires compiler to detect all self references. not possible at compile time as reference may depend on user input
+prevents some compiler optimization + runtime cost
+- forbid moving the structs
+must deal with move operations on possible self-referential structs by programmer
+
+Rust goes with 3rd solution. 
+- zero cost abstraction (no runtime cost)
+
+Heap values
+- have fixed memory address most of the time
+- created using a call to allocate and referenced by a pointer type (Box<T>)
+- moving pointer type is possible but heap value that pointer points to stays same memory address until it is freed
+
+Pinning API provides solution to &mut T problem in form of Pin wrapper type and Unpin marker trait
+- gate all methods of Pin that can be used to get &mut ref to wrapped value
+- Unpin trait: auto trait. automatically implemented for all types except for those that explicitly opt-out
+- making self referential struct opt out of Unpin -> no way to get &mut T from Pin<Box<T>>
+
+Opting out of Unpin and using Pin<Box<T>> can prevent this operation at compile time.
+- can work with self-referential structs
+Cons:
+- heap allocation costs performance
+
+Stack Pinning and Pin<&mut T>
+Pin<Box<T>> have ownership of the wrapped value
+Pin<&mut T> temporarily borrow wrapped value (must ensure additional gurantees)
+- must stay pinned whole lifetime (difficult to verify for stack based variables)
+
+Executors and Wakers
+
+Futures do nothing until they are polled. Without poll getting called, asynchronous code is never executed
+- problem for many futures
+
+Executors: allow spawning futures as independent tasks
+- responsible for polling all futures until they are completed
+- advantage of managing all futures in central place: executor can switch to diff future whenever future returns Poll::Pending
+    asynchronous operations are run in parallel and CPU is kept busy
+- make use of thread pool (utilize all cores if there is enough work available)
+    with work stealing to balance load between cores
+- uses waker API to avoid polling futures repeatedly
+
+Wakers: type passed to each invocation of poll (wrapped in Context type)
+- created by executor and used by asynchronous task to signal its partial/completion
+- executor no need to call poll on future that previously returned Poll::Pending until notified by corresponding waker
+
+Futures and async/await is Cooperative multitasking
+- more efficient context switch and possible to share same call stack between tasks
+- each future added to executor is cooperative task
+- future gives up CPU by returning Poll::Pending or Poll::Ready
+- future internally store all state they need to continue execution on next poll call
+    with async/await, compiler detects variables needed and store them in generated state machine
+
+RawWaker: requires programmer to define virtual method table
+virtual method table specifies function that should be called when RawWaker is cloned, woken, or dropped
+- each function receives *const() arg (type erased pointer to some value)
+- *const() instead of proper reference: RawWaker must be non generic but support arbitrary types
+
+RawWaker is used for some heap-allocated struct that is wrapped to Box or Arc type
+Box::into_raw can be used to convert Box<T> to *const T pointer
+- Box::into_raw can be used to convert Box<T> to *const T pointer
+- this pointer then can be casted to anonymous *const () and passed to RawWaker::new 
+(dangerous, could lead to undefined behavior)
+
+Async keyboard interrupt
+Keyboard interrupt:
+- non deterministic (no way to predict when next key press will occur)
+- latency-critical (handle keyboard input in timely manner. otherwise, lag)
+
+Scancode queue. Instead of interrupt handler directly handling keyboard, it should only read keyboard Scancode
+- interrupt handler pushes units of work to queue and background task handles work in queue.
+- interrupt handler reads keyboard scancode -> pushes it to queue -> returns 
+
+Mutex in interrupt handler can cause deadlocks
+- user press key while the keyboard task has locked the queue -> interrupt handler tries to acquire lock again and deadlocks
+- queue automatically increases capacity by performing new heap allocation when its full.
+    lead to deadlock because allocator uses mutex internally
+    heap allocation could fail or take time when heap is fragmented
+Must use mutexes free or allocation free when pushing
+- can create push and pop operations that only requires &self ref 
+- to avoid allocation on push, queue can be backed by pre-allocated fixed-size buffer
+
+Stream Trait: futures crate's abstraction
+
+Possible extension
